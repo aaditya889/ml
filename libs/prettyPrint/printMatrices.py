@@ -53,7 +53,7 @@ class PrettyPrint:
     return names[0]
       
   @staticmethod
-  def matrix(matrix, print_name=True):    
+  def matrix(matrix, print_name=False):    
     if print_name:
       matrix_name = PrettyPrint().get_matrix_name()
       print(f'{matrix_name}: ')

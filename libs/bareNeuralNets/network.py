@@ -69,6 +69,7 @@ class NeuralNetwork:
     
     return zs, activations
   
+  # TODO: Implement a non-recursive backpropagation algorithm.
   def backpropagation(self, learning_constant, zs, activations, current_delta, current_layer, delta_ws, delta_bs):
     if current_layer == 0:
       return

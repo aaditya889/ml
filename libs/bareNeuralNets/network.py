@@ -1,9 +1,7 @@
 import numpy as np
 from libs.prettyPrint.printMatrices import PrettyPrint
+import random
 
-VERBOSE_DEBUG = False
-NON_VERBOSE_DEBUG = False
-NON_VERBOSE_DEBUG_2 = False
   
 def sigmoid(x):
   return 1 / (1 + np.exp(-x))
@@ -56,8 +54,8 @@ class NeuralNetwork:
     
     match connectivity:
       case NNParamaters.Connectivity.fully_connected:
-        self.weights = [np.random.rand(structure[i+1], structure[i]) for i in range(self.layers-1)]
-        self.biases = [np.random.rand(structure[i+1], 1) for i in range(self.layers-1)]
+        self.weights = [np.random.randn(structure[i+1], structure[i]) for i in range(self.layers-1)]
+        self.biases = [np.random.randn(structure[i+1], 1) for i in range(self.layers-1)]
       case _:
         raise ValueError(f"Connectivity {connectivity} not supported")
 
@@ -77,42 +75,74 @@ class NeuralNetwork:
 
     delta_w = learning_constant * np.matmul(current_delta, activations[current_layer-1].T)
     delta_b = learning_constant * current_delta
+    # PrettyPrint.matrix(delta_w)
+    
     delta_ws[current_layer-1] += delta_w
     delta_bs[current_layer-1] += delta_b
     previous_delta = np.matmul(self.weights[current_layer-1].T, current_delta) * self.activation_function_derivative(zs[current_layer-1])
     self.backpropagation(learning_constant, zs, activations, previous_delta, current_layer-1, delta_ws, delta_bs)
 
-  
-  def train_minibatch(self, training_data, labels, epochs=1000):
+  def SGD(self, training_data, epochs, mini_batch_size, eta, test_data=None):
+    """Train the neural network using mini-batch stochastic
+    gradient descent.  The ``training_data`` is a list of tuples
+    ``(x, y)`` representing the training inputs and the desired
+    outputs.  The other non-optional parameters are
+    self-explanatory.  If ``test_data`` is provided then the
+    network will be evaluated against the test data after each
+    epoch, and partial progress printed out.  This is useful for
+    tracking progress, but slows things down substantially."""
+    if test_data: 
+      n_test = len(test_data)
+    
     n = len(training_data)
-    learning_constant = self.learning_rate / n
+    
+    correct_results = self.evaluate(test_data)
+    print(f"Without training: {correct_results} / {n_test} :: Percentage = {100*correct_results / n_test}%")
 
-    while epochs > 0:
-      delta_ws = [np.zeros(w.shape) for w in self.weights]
-      delta_bs = [np.zeros(b.shape) for b in self.biases]
+    for j in range(epochs):
+      random.shuffle(training_data)
+      mini_batches = [training_data[k:k+mini_batch_size] for k in range(0, n, mini_batch_size)]
+      for mini_batch in mini_batches:
+        self.train_minibatch(mini_batch, learning_rate=eta)
+      if test_data:
+        correct_results = self.evaluate(test_data)
+        print(f"Epoch {j}: {correct_results} / {n_test} :: Percentage = {100*correct_results / n_test}%")
+      else:
+        print("Epoch {0} complete".format(j))
 
-      for datum, label in zip(training_data, labels):
-        if (len(datum.shape) == 1):
-          curr_datum = datum.reshape(datum.shape+(1,))
-          curr_label = label.reshape(label.shape+(1,))
-        else:
-          curr_datum = datum
-          curr_label = label
+
+  def train_minibatch(self, training_data, learning_rate=None):
+    if not learning_rate:
+      learning_rate = self.learning_rate
+    
+    n = len(training_data)
+    learning_constant = learning_rate / n
+    
+    delta_ws = [np.zeros(w.shape) for w in self.weights]
+    delta_bs = [np.zeros(b.shape) for b in self.biases]
+
+    for datum, label in training_data:
+      if (len(datum.shape) == 1):
+        curr_datum = datum.reshape(datum.shape+(1,))
+        curr_label = label.reshape(label.shape+(1,))
+      else:
+        curr_datum = datum
+        curr_label = label
+
+      zs, activations = self.feedforward(curr_datum)    
+      last_delta = self.cost_function_derivative(activations[-1], curr_label) * self.activation_function_derivative(zs[-1])
+      self.backpropagation(learning_constant, zs, activations, last_delta, self.layers-1, delta_ws, delta_bs)
         
-        zs, activations = self.feedforward(curr_datum)    
-        last_delta = self.cost_function_derivative(activations[-1], curr_label) * self.activation_function_derivative(zs[-1])
-        self.backpropagation(learning_constant, zs, activations, last_delta, self.layers-1, delta_ws, delta_bs)
-          
-      for i in range(self.layers-1):
-        self.weights[i] -= delta_ws[i]
-        self.biases[i] -= delta_bs[i]
+    for i in range(self.layers-1):
+      # print(f'Updating weights for layer {i}')
+      # PrettyPrint.matrix(delta_ws[i])
+      self.weights[i] -= delta_ws[i]
+      # print(f'Updating biases for layer {i}')
+      # PrettyPrint.matrix(delta_bs[i])
+      self.biases[i] -= delta_bs[i]
 
-      epochs -= 1
 
   def predict(self, data):
-    if NON_VERBOSE_DEBUG:
-      print(f'Predicting for data of shape: {data.shape}')
-      PrettyPrint.matrix(data)
     zs, activations = self.feedforward(data)
     return activations[-1]
   
@@ -121,6 +151,10 @@ class NeuralNetwork:
     network outputs the correct result. Note that the neural
     network's output is assumed to be the index of whichever
     neuron in the final layer has the highest activation."""
-    test_results = [(np.argmax(self.feedforward(x)), y)
+    # for (x, y) in test_data:
+    #   print(f'Predicting for data of shape: {x.shape}')
+    #   # PrettyPrint.matrix(x)
+    #   self.feedforward(x)
+    test_results = [(np.argmax(self.feedforward(x)[1][-1]), y)
                     for (x, y) in test_data]
     return sum(int(x == y) for (x, y) in test_results)
